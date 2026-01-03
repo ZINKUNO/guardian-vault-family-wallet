@@ -1,21 +1,28 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Key, User, Clock, DollarSign, CheckCircle2, AlertCircle } from "lucide-react"
+import { Key, User, Clock, DollarSign, CheckCircle2, AlertCircle, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/hooks/use-toast"
+import { usePermissionRequest } from "@/hooks/usePermissionRequest"
+import { useAccount } from "wagmi"
+import { useSmartAccount } from "@/hooks/useSmartAccount"
 
 export default function PermissionsPage() {
+  const { address } = useAccount()
+  const { isSmartAccount, upgradeRequired } = useSmartAccount()
+  const { requestPermission, isLoading, error } = usePermissionRequest()
+  
   const [vaults, setVaults] = useState<any[]>([])
   const [selectedVault, setSelectedVault] = useState<string>("")
   const [agentAddress, setAgentAddress] = useState("")
   const [spendLimit, setSpendLimit] = useState("")
+  const [assetType, setAssetType] = useState<"ETH" | "USDC">("ETH")
   const [expiry, setExpiry] = useState("365")
-  const [isGranting, setIsGranting] = useState(false)
   const [granted, setGranted] = useState(false)
 
   useEffect(() => {
@@ -24,7 +31,42 @@ export default function PermissionsPage() {
     if (stored.length > 0) setSelectedVault(stored[0].id)
   }, [])
 
+  // Check if wallet is connected and smart account is ready
+  useEffect(() => {
+    if (!address) {
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet to grant permissions.",
+        variant: "destructive",
+      })
+    } else if (upgradeRequired) {
+      toast({
+        title: "Smart Account Required",
+        description: "Please upgrade to MetaMask Smart Account to use this feature.",
+        variant: "destructive",
+      })
+    }
+  }, [address, upgradeRequired])
+
   const handleGrant = async () => {
+    if (!address) {
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet first.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (upgradeRequired) {
+      toast({
+        title: "Smart Account Required",
+        description: "Please upgrade to MetaMask Smart Account first.",
+        variant: "destructive",
+      })
+      return
+    }
+
     if (!selectedVault || !agentAddress || !spendLimit) {
       toast({
         title: "Missing Information",
@@ -34,31 +76,84 @@ export default function PermissionsPage() {
       return
     }
 
-    setIsGranting(true)
-
-    // Simulate ERC-7715 walletClient.requestExecutionPermissions()
-    await new Promise((resolve) => setTimeout(resolve, 2500))
-
-    const newPermission = {
-      id: Math.random().toString(36).substring(7),
-      vaultId: selectedVault,
-      agentAddress,
-      spendLimit,
-      expiry: new Date(Date.now() + Number.parseInt(expiry) * 24 * 60 * 60 * 1000).toISOString(),
-      status: "active",
-      createdAt: new Date().toISOString(),
+    // Validate agent address format
+    if (!agentAddress.startsWith("0x") || agentAddress.length !== 42) {
+      toast({
+        title: "Invalid Address",
+        description: "Please enter a valid Ethereum address (0x...).",
+        variant: "destructive",
+      })
+      return
     }
 
-    const existing = JSON.parse(localStorage.getItem("guardian_permissions") || "[]")
-    localStorage.setItem("guardian_permissions", JSON.stringify([...existing, newPermission]))
+    // Get selected vault details
+    const vault = vaults.find(v => v.id === selectedVault)
+    if (!vault) {
+      toast({
+        title: "Vault Not Found",
+        description: "Selected vault not found.",
+        variant: "destructive",
+      })
+      return
+    }
 
-    setIsGranting(false)
-    setGranted(true)
+    try {
+      // Calculate period duration (1 day in seconds)
+      const periodDuration = 86400 // 1 day
+      const durationDays = Number.parseInt(expiry)
 
-    toast({
-      title: "Permission Granted",
-      description: "ERC-7715 Advanced Permission has been successfully registered.",
-    })
+      // Get first beneficiary address for the permission
+      const beneficiary = vault.beneficiaries?.[0]?.address || address
+
+      // Request permission via MetaMask
+      const permissionResponse = await requestPermission({
+        tokenType: assetType,
+        amount: spendLimit,
+        periodDuration: periodDuration,
+        duration: durationDays,
+        beneficiary: beneficiary,
+        vaultName: vault.name,
+        vaultId: selectedVault,
+        agentAddress: agentAddress
+      })
+
+      if (!permissionResponse) {
+        // Error already handled by hook
+        return
+      }
+
+      // Store permission in localStorage
+      const newPermission = {
+        id: permissionResponse.permissionId,
+        vaultId: selectedVault,
+        agentAddress: agentAddress,
+        spendLimit: spendLimit,
+        assetType: assetType,
+        expiry: new Date(permissionResponse.expiresAt).toISOString(),
+        status: "active",
+        createdAt: new Date(permissionResponse.createdAt).toISOString(),
+        permissionsContext: permissionResponse.permissionsContext,
+        delegationManager: permissionResponse.delegationManager,
+        signedDelegation: permissionResponse.signedDelegation
+      }
+
+      const existing = JSON.parse(localStorage.getItem("guardian_permissions") || "[]")
+      localStorage.setItem("guardian_permissions", JSON.stringify([...existing, newPermission]))
+
+      setGranted(true)
+
+      toast({
+        title: "Permission Granted",
+        description: "ERC-7715 Advanced Permission has been successfully registered.",
+      })
+    } catch (err: any) {
+      console.error("Permission grant error:", err)
+      toast({
+        title: "Permission Request Failed",
+        description: err.message || "Failed to grant permission. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   if (granted) {
@@ -148,9 +243,25 @@ export default function PermissionsPage() {
               </p>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="assetType">Asset Type (Sepolia Testnet)</Label>
+              <Select value={assetType} onValueChange={(value: "ETH" | "USDC") => setAssetType(value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select asset type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ETH">ETH (Sepolia)</SelectItem>
+                  <SelectItem value="USDC">USDC (Sepolia)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-muted-foreground">
+                Select the asset type for this permission on Sepolia testnet.
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="limit">Spend Limit (ETH)</Label>
+                <Label htmlFor="limit">Spend Limit ({assetType})</Label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input
@@ -158,10 +269,14 @@ export default function PermissionsPage() {
                     className="pl-10"
                     placeholder="max amount"
                     type="number"
+                    step="0.000001"
                     value={spendLimit}
                     onChange={(e) => setSpendLimit(e.target.value)}
                   />
                 </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Maximum amount the agent can spend in {assetType}.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="expiry">Period (Expiry)</Label>
@@ -183,16 +298,33 @@ export default function PermissionsPage() {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4 pt-6 border-t">
+            {error && (
+              <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm text-destructive">
+                <strong>Error:</strong> {error.message}
+              </div>
+            )}
+            {upgradeRequired && (
+              <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 text-sm text-yellow-600 dark:text-yellow-400">
+                <strong>Smart Account Required:</strong> Please upgrade to MetaMask Smart Account to grant permissions.
+              </div>
+            )}
             <Button
               className="w-full h-12 text-lg shadow-lg shadow-primary/20"
               onClick={handleGrant}
-              disabled={isGranting}
+              disabled={isLoading || !address || upgradeRequired}
             >
-              {isGranting ? "Requesting Permissions via MetaMask..." : "Grant Advanced Permission"}
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Requesting Permissions via MetaMask...
+                </>
+              ) : (
+                "Grant Advanced Permission"
+              )}
             </Button>
             <p className="text-xs text-center text-muted-foreground px-4">
               By clicking grant, you are authorizing the agent to spend up to the limit from your Smart Account vault.
-              This action is auditable and revocable.
+              This action is auditable and revocable. MetaMask will prompt you to approve the permission.
             </p>
           </CardFooter>
         </Card>
