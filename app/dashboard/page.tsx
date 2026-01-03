@@ -1,22 +1,74 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Plus, Key, ArrowUpRight, Activity, Wallet, History, ExternalLink } from "lucide-react"
+import { useState, useEffect, useMemo } from "react"
+import { Plus, Key, ArrowUpRight, Activity, Wallet, History, ExternalLink, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
+import { useAccount, useBalance } from "wagmi"
+import { formatEther } from "viem"
 
 export default function DashboardPage() {
+  const { address } = useAccount()
+  const { data: walletBalance } = useBalance({ address })
+  
   const [vaults, setVaults] = useState<any[]>([])
   const [permissions, setPermissions] = useState<any[]>([])
+  const [executionHistory, setExecutionHistory] = useState<any[]>([])
+
+  // Calculate real stats from actual data
+  const totalVaultBalance = useMemo(() => {
+    return vaults.reduce((sum, v) => sum + parseFloat(v.balance || "0"), 0).toFixed(4)
+  }, [vaults])
+  
+  const activeVaultBalance = useMemo(() => {
+    // Balance in vaults with active permissions
+    return vaults
+      .filter(v => permissions.some(p => p.vaultId === v.id && p.status === "active"))
+      .reduce((sum, v) => sum + parseFloat(v.balance || "0"), 0)
+      .toFixed(4)
+  }, [vaults, permissions])
+  
+  const totalPermissionsAllowance = useMemo(() => {
+    // Total allowance across all active permissions
+    return permissions
+      .filter(p => p.status === "active")
+      .reduce((sum, p) => sum + parseFloat(p.remainingAllowance || p.spendLimit || "0"), 0)
+      .toFixed(4)
+  }, [permissions])
+  
+  const activePermissionsCount = useMemo(() => {
+    return permissions.filter(p => p.status === "active").length
+  }, [permissions])
+  
+  const totalExecutions = useMemo(() => {
+    return executionHistory.length
+  }, [executionHistory])
+  
+  const totalExecutedAmount = useMemo(() => {
+    return executionHistory
+      .filter(h => h.status === "success")
+      .reduce((sum, h) => sum + parseFloat(h.amount || "0"), 0)
+      .toFixed(4)
+  }, [executionHistory])
 
   useEffect(() => {
-    const storedVaults = JSON.parse(localStorage.getItem("guardian_vaults") || "[]")
-    const storedPerms = JSON.parse(localStorage.getItem("guardian_permissions") || "[]")
-    setVaults(storedVaults)
-    setPermissions(storedPerms)
+    const loadData = () => {
+      const storedVaults = JSON.parse(localStorage.getItem("guardian_vaults") || "[]")
+      const storedPerms = JSON.parse(localStorage.getItem("guardian_permissions") || "[]")
+      const storedHistory = JSON.parse(localStorage.getItem("guardian_execution_history") || "[]")
+      
+      setVaults(storedVaults)
+      setPermissions(storedPerms)
+      setExecutionHistory(storedHistory)
+    }
+    
+    loadData()
+    // Refresh every 5 seconds for real-time updates
+    const interval = setInterval(loadData, 5000)
+    return () => clearInterval(interval)
   }, [])
 
   return (
@@ -39,24 +91,30 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard
           icon={<Wallet className="w-5 h-5 text-primary" />}
           label="Total Vault Balance"
-          value="12.45 ETH"
-          description="Across 3 accounts"
+          value={`${totalVaultBalance} ETH`}
+          description={`Across ${vaults.length} vault${vaults.length !== 1 ? 's' : ''}`}
         />
         <StatCard
-          icon={<Key className="w-5 h-5 text-primary" />}
+          icon={<Activity className="w-5 h-5 text-emerald-500" />}
+          label="Active Balance"
+          value={`${activeVaultBalance} ETH`}
+          description={`${totalPermissionsAllowance} ETH allowance`}
+        />
+        <StatCard
+          icon={<Key className="w-5 h-5 text-blue-500" />}
           label="Active Permissions"
-          value={permissions.length.toString()}
-          description="Granted via ERC-7715"
+          value={activePermissionsCount.toString()}
+          description="ERC-7715 Delegations"
         />
         <StatCard
-          icon={<Activity className="w-5 h-5 text-primary" />}
-          label="Trigger Status"
-          value="Secure"
-          description="Last check: 2m ago"
+          icon={<History className="w-5 h-5 text-purple-500" />}
+          label="Total Executed"
+          value={`${totalExecutedAmount} ETH`}
+          description={`${totalExecutions} transaction${totalExecutions !== 1 ? 's' : ''}`}
         />
       </div>
 
@@ -122,23 +180,54 @@ export default function DashboardPage() {
                   <tr>
                     <th className="text-left py-4 px-6 font-medium">Agent</th>
                     <th className="text-left py-4 px-6 font-medium">Vault</th>
-                    <th className="text-left py-4 px-6 font-medium">Limit</th>
+                    <th className="text-left py-4 px-6 font-medium">Asset</th>
+                    <th className="text-left py-4 px-6 font-medium">Limit / Remaining</th>
                     <th className="text-left py-4 px-6 font-medium">Expiry</th>
                     <th className="text-left py-4 px-6 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {permissions.map((p) => (
-                    <tr key={p.id} className="border-b last:border-0 hover:bg-card/50 transition-colors">
-                      <td className="py-4 px-6 font-mono text-xs truncate max-w-[150px]">{p.agentAddress}</td>
-                      <td className="py-4 px-6">{vaults.find((v) => v.id === p.vaultId)?.name || "Unknown"}</td>
-                      <td className="py-4 px-6">{p.spendLimit} ETH</td>
-                      <td className="py-4 px-6 text-muted-foreground">{new Date(p.expiry).toLocaleDateString()}</td>
-                      <td className="py-4 px-6">
-                        <Badge className="bg-primary/10 text-primary border-primary/20">Active</Badge>
-                      </td>
-                    </tr>
-                  ))}
+                  {permissions.map((p) => {
+                    const remaining = p.remainingAllowance || p.spendLimit
+                    const vault = vaults.find((v) => v.id === p.vaultId)
+                    return (
+                      <tr key={p.id} className="border-b last:border-0 hover:bg-card/50 transition-colors">
+                        <td className="py-4 px-6 font-mono text-xs truncate max-w-[150px]">
+                          {p.agentAddress?.substring(0, 8)}...{p.agentAddress?.slice(-6)}
+                        </td>
+                        <td className="py-4 px-6">{vault?.name || "Unknown"}</td>
+                        <td className="py-4 px-6">
+                          <Badge variant="outline" className="text-xs">
+                            {p.assetType || "ETH"}
+                          </Badge>
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="flex flex-col">
+                            <span className="font-semibold">{p.spendLimit} {p.assetType || "ETH"}</span>
+                            <span className="text-xs text-muted-foreground">
+                              Remaining: {remaining} {p.assetType || "ETH"}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6 text-muted-foreground text-xs">
+                          {new Date(p.expiry).toLocaleDateString()}
+                        </td>
+                        <td className="py-4 px-6">
+                          <Badge 
+                            className={
+                              p.status === "active" 
+                                ? "bg-primary/10 text-primary border-primary/20"
+                                : p.status === "revoked"
+                                ? "bg-red-500/10 text-red-500 border-red-500/20"
+                                : "bg-gray-500/10 text-gray-500 border-gray-500/20"
+                            }
+                          >
+                            {p.status || "active"}
+                          </Badge>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -155,22 +244,47 @@ export default function DashboardPage() {
               <CardDescription>On-chain actions recorded for your vaults.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="flex items-center justify-between py-3 border-b last:border-0">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-muted p-2 rounded-lg">
-                        <Activity className="w-4 h-4 text-muted-foreground" />
+              {executionHistory.length === 0 ? (
+                <div className="py-12 text-center text-muted-foreground">
+                  <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p className="font-medium">No execution history yet</p>
+                  <p className="text-sm">Executions will appear here after agents process transfers.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {executionHistory.map((h) => (
+                    <div key={h.id} className="flex items-center justify-between py-3 border-b last:border-0">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-emerald-500/10 p-2 rounded-lg">
+                          <Activity className="w-4 h-4 text-emerald-500" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm">
+                            Released {h.amount} {h.assetType} to beneficiary
+                          </p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-2">
+                            <Clock className="w-3 h-3" />
+                            {new Date(h.timestamp).toLocaleString()} • {h.vaultName}
+                          </p>
+                          {h.transactionHash && (
+                            <a
+                              href={`https://sepolia.etherscan.io/tx/${h.transactionHash}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                            >
+                              View on Etherscan <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-sm">Permission Registered</p>
-                        <p className="text-xs text-muted-foreground">EIP-7702 Delegation • 2 hours ago</p>
-                      </div>
+                      <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                        {h.status}
+                      </Badge>
                     </div>
-                    <ExternalLink className="w-4 h-4 text-muted-foreground hover:text-primary cursor-pointer" />
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

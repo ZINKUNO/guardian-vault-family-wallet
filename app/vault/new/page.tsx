@@ -57,9 +57,9 @@ export default function CreateVaultPage() {
       id: Math.random().toString(36).substring(7),
       name: vaultName,
       owner: address,
-      beneficiaries,
-      assetType,
-      emergencyRule,
+      beneficiaries: beneficiaries.filter(b => b.address && b.name), // Filter empty beneficiaries
+      assetType: assetType || "eth",
+      emergencyRule: emergencyRule || "90",
       balance: "0.00",
       status: "active",
       createdAt: new Date().toISOString(),

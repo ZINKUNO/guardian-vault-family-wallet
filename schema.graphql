@@ -1,0 +1,171 @@
+# GuardianVault Schema for Envio Indexing
+
+type Vault @entity {
+  id: ID! # Vault contract address
+  name: String!
+  owner: String! # Vault owner address
+  createdAt: BigInt!
+  balance: BigInt!
+  assetType: AssetType!
+  tokenAddress: String # For ERC-20 tokens
+  
+  # Trigger configuration
+  triggerType: TriggerType!
+  triggerTimestamp: BigInt
+  isTriggered: Boolean!
+  
+  # Relationships
+  beneficiaries: [Beneficiary!]! @derivedFrom(field: "vault")
+  deposits: [Deposit!]! @derivedFrom(field: "vault")
+  withdrawals: [Withdrawal!]! @derivedFrom(field: "vault")
+  permissions: [Permission!]! @derivedFrom(field: "vault")
+  executions: [Execution!]! @derivedFrom(field: "vault")
+  
+  # Status tracking
+  totalDeposited: BigInt!
+  totalWithdrawn: BigInt!
+  lastActivity: BigInt!
+}
+
+type Beneficiary @entity {
+  id: ID! # vault_address + beneficiary_address
+  vault: Vault!
+  address: String!
+  name: String
+  percentage: Int! # Percentage allocation (0-100)
+  allocatedAmount: BigInt! # Calculated amount to receive
+  receivedAmount: BigInt! # Amount actually received
+  addedAt: BigInt!
+}
+
+type Deposit @entity {
+  id: ID! # transaction hash + log index
+  vault: Vault!
+  from: String!
+  amount: BigInt!
+  assetType: AssetType!
+  tokenAddress: String # For ERC-20 tokens
+  timestamp: BigInt!
+  transactionHash: String!
+  blockNumber: BigInt!
+}
+
+type Withdrawal @entity {
+  id: ID! # transaction hash + log index
+  vault: Vault!
+  to: String!
+  amount: BigInt!
+  assetType: AssetType!
+  tokenAddress: String # For ERC-20 tokens
+  timestamp: BigInt!
+  transactionHash: String!
+  blockNumber: BigInt!
+  
+  # Execution context
+  executedBy: String! # Agent address that executed
+  executionType: ExecutionType!
+  permissionId: String # ERC-7715 permission context
+}
+
+type Permission @entity {
+  id: ID! # permission context ID
+  vault: Vault!
+  agentAddress: String!
+  tokenType: AssetType!
+  maxAmount: BigInt!
+  remainingAllowance: BigInt!
+  grantedAt: BigInt!
+  expiresAt: BigInt!
+  status: PermissionStatus!
+  
+  # Permission details
+  periodDuration: BigInt! # Time between allowed executions
+  lastUsed: BigInt
+  usageCount: Int!
+}
+
+type Execution @entity {
+  id: ID! # execution ID
+  vault: Vault!
+  triggerType: TriggerType!
+  executedAt: BigInt!
+  transactionHash: String!
+  blockNumber: BigInt!
+  
+  # Execution results
+  status: ExecutionStatus!
+  beneficiariesPaid: Int!
+  totalAmount: BigInt!
+  successRate: BigDecimal! # Percentage of successful beneficiary payments
+  
+  # Individual beneficiary results
+  beneficiaryResults: [BeneficiaryExecution!]! @derivedFrom(field: "execution")
+}
+
+type BeneficiaryExecution @entity {
+  id: ID! # execution_id + beneficiary_address
+  execution: Execution!
+  beneficiaryAddress: String!
+  amount: BigInt!
+  status: ExecutionStatus!
+  transactionHash: String
+  error: String # If failed
+}
+
+type TriggerEvent @entity {
+  id: ID! # event ID
+  vault: Vault!
+  triggerType: TriggerType!
+  triggeredAt: BigInt!
+  transactionHash: String!
+  blockNumber: BigInt!
+  
+  # Trigger details
+  reason: String # Why trigger was activated
+  metadata: String # Additional trigger data
+}
+
+# Enums
+enum AssetType {
+  ETH
+  USDC
+  WETH
+  ERC20
+}
+
+enum TriggerType {
+  TIME
+  MANUAL
+  ORACLE
+}
+
+enum ExecutionType {
+  AUTO
+  MANUAL
+  EMERGENCY
+}
+
+enum PermissionStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+  USED_UP
+}
+
+enum ExecutionStatus {
+  SUCCESS
+  FAILED
+  PENDING
+}
+
+# Global statistics
+type VaultStats @entity {
+  id: ID! # "global"
+  totalVaults: Int!
+  totalValueLocked: BigInt!
+  totalDeposits: BigInt!
+  totalWithdrawals: BigInt!
+  activePermissions: Int!
+  successfulExecutions: Int!
+  lastUpdated: BigInt!
+}

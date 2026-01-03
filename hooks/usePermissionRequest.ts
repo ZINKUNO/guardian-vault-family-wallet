@@ -62,13 +62,16 @@ export function usePermissionRequest() {
     // Create wallet client with ERC-7715 provider actions (official MetaMask way)
     // According to: https://docs.metamask.io/smart-accounts-kit/guides/advanced-permissions/execute-on-metamask-users-behalf/
     const extendedWalletClient = useMemo(() => {
-        if (typeof window === 'undefined' || !window.ethereum) return null;
+        if (typeof window === 'undefined') return null;
+        
+        const ethereum = (window as any).ethereum;
+        if (!ethereum) return null;
         
         try {
             // Create wallet client using window.ethereum and extend with erc7715ProviderActions
             // This is the official way according to MetaMask documentation
             const client = createWalletClient({
-                transport: custom(window.ethereum),
+                transport: custom(ethereum),
             }).extend(erc7715ProviderActions());
             
             return client;
@@ -111,102 +114,84 @@ export function usePermissionRequest() {
             const expiry = Math.floor(Date.now() / 1000) + (duration * 24 * 60 * 60);
             const startTime = Math.floor(Date.now() / 1000);
 
-            // Determine permission type based on token type
-            const permissionType = tokenType === "ETH" 
-                ? "native-token-periodic" 
-                : "erc20-token-periodic";
-
             // Parse amount based on token decimals
             const decimals = tokenType === "USDC" ? 6 : 18;
             const periodAmount = parseUnits(amount, decimals);
 
-            // Prepare permission request
-            // Note: requestExecutionPermissions is from erc7715Actions() extension
-            const permissionRequest = {
+            // Prepare permission request according to official MetaMask docs
+            // https://docs.metamask.io/smart-accounts-kit/guides/advanced-permissions/execute-on-metamask-users-behalf/
+            const permissionRequest: any = {
                 chainId: sepolia.id,
                 expiry: expiry,
                 signer: {
                     type: "account" as const,
-                    data: { address: agentAddress as `0x${string}` }
-                },
-                permission: {
-                    type: permissionType,
-                    data: {
-                        tokenAddress: tokenType === "ETH" ? undefined : USDC_ADDRESS as `0x${string}`,
-                        periodAmount: periodAmount,
-                        periodDuration: periodDuration, // e.g., 86400 (1 day)
-                        startTime: startTime,
-                        justification: `Inheritance permission for ${vaultName}. Beneficiary: ${beneficiary}`
+                    data: { 
+                        address: agentAddress as `0x${string}` 
                     }
                 },
+                permission: tokenType === "ETH" 
+                    ? {
+                        type: "native-token-periodic" as const,
+                        data: {
+                            periodAmount: periodAmount,
+                            periodDuration: periodDuration, // e.g., 86400 (1 day)
+                            startTime: startTime,
+                            justification: `Inheritance: ${vaultName} → ${beneficiary.substring(0, 8)}...`
+                        }
+                    }
+                    : {
+                        type: "erc20-token-periodic" as const,
+                        data: {
+                            tokenAddress: USDC_ADDRESS as `0x${string}`,
+                            periodAmount: periodAmount,
+                            periodDuration: periodDuration, // e.g., 86400 (1 day)
+                            startTime: startTime,
+                            justification: `Inheritance: ${vaultName} → ${beneficiary.substring(0, 8)}...`
+                        }
+                    },
                 isAdjustmentAllowed: false // Strict limits - no adjustments allowed
             };
 
-            // Request permission from user via MetaMask
-            // This will show a MetaMask modal for user approval
-            console.log('📤 Requesting permission via MetaMask...', permissionRequest);
-            console.log('Wallet client:', extendedWalletClient);
-            console.log('Has requestExecutionPermissions:', !!(extendedWalletClient as any)?.requestExecutionPermissions);
+            // Request permission from user via MetaMask using official Smart Accounts Kit
+            // According to: https://docs.metamask.io/smart-accounts-kit/guides/advanced-permissions/execute-on-metamask-users-behalf/
+            console.log('📤 Requesting permission via MetaMask using Smart Accounts Kit...', permissionRequest);
             
             let permissions;
-            
-            // Try using extended wallet client first
-            if (extendedWalletClient && (extendedWalletClient as any).requestExecutionPermissions) {
-                try {
-                    permissions = await (extendedWalletClient as any).requestExecutionPermissions([
-                        permissionRequest
-                    ]);
-                } catch (err: any) {
-                    console.warn('Extended wallet client failed, trying direct ethereum:', err);
-                    // Fall through to direct ethereum call
+            try {
+                // Use the official requestExecutionPermissions from Smart Accounts Kit
+                // This should trigger the MetaMask popup
+                permissions = await extendedWalletClient.requestExecutionPermissions([
+                    permissionRequest
+                ]);
+
+                if (!permissions || permissions.length === 0) {
+                    throw new Error("Permission request denied or failed. User may have rejected the request.");
                 }
-            }
-            
-            // Fallback: Try direct ethereum.request if walletClient method doesn't work
-            if (!permissions) {
-                const ethereum = (window as any).ethereum;
-                if (ethereum && ethereum.isMetaMask) {
-                    // Check if it's Flask version
-                    const isFlask = ethereum.version?.includes('flask') || 
-                                   ethereum._metamask?.isUnlocked?.() !== undefined ||
-                                   ethereum.request?.toString().includes('wallet_requestExecutionPermissions');
-                    
-                    if (!isFlask) {
-                        throw new Error(
-                            "MetaMask Flask required. Please install MetaMask Flask 13.5.0+ with ERC-7715 support."
-                        );
-                    }
-                    
-                    // Try direct ethereum.request for ERC-7715
-                    try {
-                        console.log('Trying direct ethereum.request for ERC-7715...');
-                        permissions = await ethereum.request({
-                            method: 'wallet_requestExecutionPermissions',
-                            params: [permissionRequest]
-                        });
-                        console.log('✅ Permission granted via direct ethereum.request:', permissions);
-                    } catch (err: any) {
-                        console.error('Direct ethereum.request failed:', err);
-                        // Handle user rejection
-                        if (err.code === 4001 || err.message?.includes('reject') || err.message?.includes('denied') || err.message?.includes('User rejected')) {
-                            throw new Error("Permission request was rejected by user.");
-                        }
-                        throw new Error(
-                            "ERC-7715 not supported. Please ensure you're using MetaMask Flask 13.5.0+ with ERC-7715 support enabled."
-                        );
-                    }
-                } else {
+
+                console.log('✅ Permission granted by user:', permissions);
+            } catch (err: any) {
+                console.error('Permission request error:', err);
+                
+                // Handle user rejection
+                if (err.code === 4001 || 
+                    err.message?.includes('reject') || 
+                    err.message?.includes('denied') || 
+                    err.message?.includes('User rejected') ||
+                    err.message?.includes('user rejected')) {
+                    throw new Error("Permission request was rejected by user.");
+                }
+                
+                // Handle missing MetaMask Flask
+                if (err.message?.includes('not supported') || 
+                    err.message?.includes('not found') ||
+                    err.message?.includes('not a function')) {
                     throw new Error(
-                        "MetaMask not detected. Please install MetaMask Flask 13.5.0+ with ERC-7715 support."
+                        "ERC-7715 not supported. Please ensure you're using MetaMask Flask 13.5.0+ with ERC-7715 support enabled."
                     );
                 }
+                
+                throw err;
             }
-
-            if (!permissions || permissions.length === 0) {
-                throw new Error("Permission request denied or failed. User may have rejected the request.");
-            }
-
-            console.log('✅ Permission granted by user:', permissions);
 
             const grantedPermission = permissions[0];
 
