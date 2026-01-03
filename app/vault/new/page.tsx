@@ -65,6 +65,7 @@ export default function CreateVaultPage() {
       createdAt: new Date().toISOString(),
     }
 
+    if (typeof window === 'undefined') return;
     const existingVaults = JSON.parse(localStorage.getItem("guardian_vaults") || "[]")
     localStorage.setItem("guardian_vaults", JSON.stringify([...existingVaults, newVault]))
 

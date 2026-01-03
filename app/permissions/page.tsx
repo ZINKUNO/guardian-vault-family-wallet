@@ -16,7 +16,7 @@ export default function PermissionsPage() {
   const { address } = useAccount()
   const { isSmartAccount, upgradeRequired } = useSmartAccount()
   const { requestPermission, isLoading, error } = usePermissionRequest()
-  
+
   const [vaults, setVaults] = useState<any[]>([])
   const [selectedVault, setSelectedVault] = useState<string>("")
   const [agentAddress, setAgentAddress] = useState("")
@@ -26,6 +26,7 @@ export default function PermissionsPage() {
   const [granted, setGranted] = useState(false)
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const stored = JSON.parse(localStorage.getItem("guardian_vaults") || "[]")
     setVaults(stored)
     if (stored.length > 0) setSelectedVault(stored[0].id)

@@ -9,20 +9,26 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
 import { useAccount, useBalance } from "wagmi"
 import { formatEther } from "viem"
+import { useEnvioVaults, useEnvioStats } from "@/hooks/useEnvio"
+import { Database } from "lucide-react"
 
 export default function DashboardPage() {
   const { address } = useAccount()
   const { data: walletBalance } = useBalance({ address })
-  
+
   const [vaults, setVaults] = useState<any[]>([])
   const [permissions, setPermissions] = useState<any[]>([])
   const [executionHistory, setExecutionHistory] = useState<any[]>([])
+
+  // Envio Data
+  const { vaults: envioVaults, loading: envioLoading } = useEnvioVaults(address)
+  const { stats: globalStats } = useEnvioStats()
 
   // Calculate real stats from actual data
   const totalVaultBalance = useMemo(() => {
     return vaults.reduce((sum, v) => sum + parseFloat(v.balance || "0"), 0).toFixed(4)
   }, [vaults])
-  
+
   const activeVaultBalance = useMemo(() => {
     // Balance in vaults with active permissions
     return vaults
@@ -30,7 +36,7 @@ export default function DashboardPage() {
       .reduce((sum, v) => sum + parseFloat(v.balance || "0"), 0)
       .toFixed(4)
   }, [vaults, permissions])
-  
+
   const totalPermissionsAllowance = useMemo(() => {
     // Total allowance across all active permissions
     return permissions
@@ -38,15 +44,15 @@ export default function DashboardPage() {
       .reduce((sum, p) => sum + parseFloat(p.remainingAllowance || p.spendLimit || "0"), 0)
       .toFixed(4)
   }, [permissions])
-  
+
   const activePermissionsCount = useMemo(() => {
     return permissions.filter(p => p.status === "active").length
   }, [permissions])
-  
+
   const totalExecutions = useMemo(() => {
     return executionHistory.length
   }, [executionHistory])
-  
+
   const totalExecutedAmount = useMemo(() => {
     return executionHistory
       .filter(h => h.status === "success")
@@ -56,15 +62,17 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const loadData = () => {
+      if (typeof window === 'undefined') return;
+
       const storedVaults = JSON.parse(localStorage.getItem("guardian_vaults") || "[]")
       const storedPerms = JSON.parse(localStorage.getItem("guardian_permissions") || "[]")
       const storedHistory = JSON.parse(localStorage.getItem("guardian_execution_history") || "[]")
-      
+
       setVaults(storedVaults)
       setPermissions(storedPerms)
       setExecutionHistory(storedHistory)
     }
-    
+
     loadData()
     // Refresh every 5 seconds for real-time updates
     const interval = setInterval(loadData, 5000)
@@ -75,7 +83,14 @@ export default function DashboardPage() {
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold">Vault Dashboard</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">Vault Dashboard</h1>
+            {globalStats && (
+              <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20 flex gap-1 items-center">
+                <Database className="h-3 w-3" /> Envio Live
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground">Manage your family assets and active permissions.</p>
         </div>
         <div className="flex gap-3">
@@ -96,7 +111,7 @@ export default function DashboardPage() {
           icon={<Wallet className="w-5 h-5 text-primary" />}
           label="Total Vault Balance"
           value={`${totalVaultBalance} ETH`}
-          description={`Across ${vaults.length} vault${vaults.length !== 1 ? 's' : ''}`}
+          description={globalStats ? `${(Number(globalStats.totalValueLocked) / 1e18).toFixed(2)} ETH Network TVL` : `Across ${vaults.length} vaults`}
         />
         <StatCard
           icon={<Activity className="w-5 h-5 text-emerald-500" />}
@@ -108,13 +123,13 @@ export default function DashboardPage() {
           icon={<Key className="w-5 h-5 text-blue-500" />}
           label="Active Permissions"
           value={activePermissionsCount.toString()}
-          description="ERC-7715 Delegations"
+          description={globalStats ? `${globalStats.activePermissions} Network Delegations` : "ERC-7715 Delegations"}
         />
         <StatCard
           icon={<History className="w-5 h-5 text-purple-500" />}
           label="Total Executed"
           value={`${totalExecutedAmount} ETH`}
-          description={`${totalExecutions} transaction${totalExecutions !== 1 ? 's' : ''}`}
+          description={globalStats ? `${globalStats.successfulExecutions} Network Executions` : `${totalExecutions} transactions`}
         />
       </div>
 
@@ -213,13 +228,13 @@ export default function DashboardPage() {
                           {new Date(p.expiry).toLocaleDateString()}
                         </td>
                         <td className="py-4 px-6">
-                          <Badge 
+                          <Badge
                             className={
-                              p.status === "active" 
+                              p.status === "active"
                                 ? "bg-primary/10 text-primary border-primary/20"
                                 : p.status === "revoked"
-                                ? "bg-red-500/10 text-red-500 border-red-500/20"
-                                : "bg-gray-500/10 text-gray-500 border-gray-500/20"
+                                  ? "bg-red-500/10 text-red-500 border-red-500/20"
+                                  : "bg-gray-500/10 text-gray-500 border-gray-500/20"
                             }
                           >
                             {p.status || "active"}

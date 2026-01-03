@@ -1,0 +1,36 @@
+name: guardian-vault-indexing
+field_selection:
+  transaction_fields:
+    - hash
+    - from
+contracts:
+  - name: GuardianVault
+    handler: src/handlers.ts
+    events:
+      - event: Deposit(address indexed sender, uint256 amount)
+      - event: Withdrawal(address indexed recipient, uint256 amount)
+      - event: BeneficiaryAdded(address indexed beneficiary, uint256 percentage)
+      - event: TriggerActivated(uint8 triggerType)
+  - name: USDC
+    handler: src/handlers.ts
+    events:
+      - event: Transfer(address indexed from, address indexed to, uint256 value)
+  - name: WETH
+    handler: src/handlers.ts
+    events:
+      - event: Transfer(address indexed from, address indexed to, uint256 value)
+networks:
+  - id: 11155111
+    start_block: 9970000
+    rpc_config:
+      url: https://sepolia.drpc.org
+    contracts:
+      - name: GuardianVault
+        address:
+          - 0x742d35Cc6634C0532925a3b844Bc454e4438f44e
+      - name: USDC
+        address:
+          - 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
+      - name: WETH
+        address:
+          - 0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14

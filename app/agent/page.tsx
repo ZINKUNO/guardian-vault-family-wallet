@@ -18,7 +18,7 @@ export default function AgentPage() {
   const { address } = useAccount()
   const publicClient = usePublicClient()
   const { data: balance } = useBalance({ address })
-  
+
   const [vaults, setVaults] = useState<any[]>([])
   const [permissions, setPermissions] = useState<any[]>([])
   const [triggerActive, setTriggerActive] = useState(false)
@@ -26,12 +26,12 @@ export default function AgentPage() {
   const [executingPermissionId, setExecutingPermissionId] = useState<string | null>(null)
   const [logs, setLogs] = useState<string[]>(["> Agent initialized", "> Waiting for ERC-7715 context..."])
   const [executionHistory, setExecutionHistory] = useState<any[]>([])
-  
+
   // Calculate real stats from actual data
   const totalVaultBalance = useMemo(() => {
     return vaults.reduce((sum, v) => sum + parseFloat(v.balance || "0"), 0).toFixed(4)
   }, [vaults])
-  
+
   const activeVaultBalance = useMemo(() => {
     // Calculate balance that can be executed (vaults with active permissions)
     return vaults
@@ -39,7 +39,7 @@ export default function AgentPage() {
       .reduce((sum, v) => sum + parseFloat(v.balance || "0"), 0)
       .toFixed(4)
   }, [vaults, permissions])
-  
+
   const totalPermissionsAllowance = useMemo(() => {
     // Total allowance across all active permissions
     return permissions
@@ -47,11 +47,11 @@ export default function AgentPage() {
       .reduce((sum, p) => sum + parseFloat(p.remainingAllowance || p.spendLimit || "0"), 0)
       .toFixed(4)
   }, [permissions])
-  
+
   const activePermissionsCount = useMemo(() => {
     return permissions.filter(p => p.status === "active").length
   }, [permissions])
-  
+
   const totalExecuted = useMemo(() => {
     return executionHistory
       .filter(h => h.status === "success")
@@ -62,16 +62,17 @@ export default function AgentPage() {
   // Load vaults and permissions from localStorage
   useEffect(() => {
     const loadData = () => {
+      if (typeof window === 'undefined') return;
       const storedVaults = JSON.parse(localStorage.getItem("guardian_vaults") || "[]")
       const storedPerms = JSON.parse(localStorage.getItem("guardian_permissions") || "[]")
       const storedHistory = JSON.parse(localStorage.getItem("guardian_execution_history") || "[]")
-      
+
       const activePerms = storedPerms.filter((p: any) => p.status === "active")
-      
+
       setVaults(storedVaults)
       setPermissions(activePerms)
       setExecutionHistory(storedHistory)
-      
+
       // Only log on initial load
       if (logs.length <= 2 && activePerms.length > 0) {
         addLog(`> Found ${activePerms.length} active permission${activePerms.length !== 1 ? 's' : ''}`)
@@ -84,7 +85,7 @@ export default function AgentPage() {
         })
       }
     }
-    
+
     loadData()
     // Refresh every 3 seconds to get latest data
     const interval = setInterval(loadData, 3000)
@@ -127,7 +128,7 @@ export default function AgentPage() {
 
     setIsExecuting(true)
     setExecutingPermissionId(permission.id)
-    
+
     try {
       // Get vault details
       const vault = vaults.find(v => v.id === permission.vaultId)
@@ -138,7 +139,7 @@ export default function AgentPage() {
       // Check vault balance
       const vaultBalance = parseFloat(vault.balance || "0")
       const executeAmount = parseFloat(permission.spendLimit)
-      
+
       if (vaultBalance < executeAmount) {
         throw new Error(`Insufficient vault balance. Available: ${vaultBalance} ${permission.assetType || "ETH"}`)
       }
@@ -151,7 +152,7 @@ export default function AgentPage() {
 
       // Get beneficiary address from vault
       const beneficiaryAddress = vault.beneficiaries?.[0]?.address || address
-      
+
       addLog(`> Initiating ERC-7715 execution for vault ${vault.name}...`)
       addLog(`> Vault ID: ${permission.vaultId.substring(0, 8)}...`)
       addLog(`> Current Vault Balance: ${vaultBalance} ${permission.assetType || "ETH"}`)
@@ -169,7 +170,7 @@ export default function AgentPage() {
       addLog("> Requesting re-delegation check from Verifier Agent...")
       addLog("> Validating A2A (Agent-to-Agent) delegation chain...")
       await new Promise((r) => setTimeout(r, 800))
-      
+
       const verifierAgent = await createAgentAccount('verifier', permission.vaultId)
       addLog(`> Verifier Agent Address: ${verifierAgent.address.substring(0, 10)}...${verifierAgent.address.slice(-8)}`)
       addLog("> Verifier Agent confirmed. Delegation chain validated.")
@@ -191,7 +192,7 @@ export default function AgentPage() {
         permissionsContext: permission.permissionsContext,
         delegationManager: permission.delegationManager as `0x${string}`,
         publicClient: publicClient,
-        tokenAddress: permission.assetType === "USDC" 
+        tokenAddress: permission.assetType === "USDC"
           ? (process.env.NEXT_PUBLIC_USDC_ADDRESS as `0x${string}` || "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as `0x${string}`)
           : undefined
       })
@@ -317,7 +318,7 @@ export default function AgentPage() {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card className="bg-card/50 border-emerald-500/20">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -330,7 +331,7 @@ export default function AgentPage() {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card className="bg-card/50 border-blue-500/20">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -402,7 +403,7 @@ export default function AgentPage() {
                 const beneficiary = vault?.beneficiaries?.[0]?.address || address || "0x..."
                 const remainingAllowance = p.remainingAllowance || p.spendLimit
                 const canExecute = triggerActive && parseFloat(remainingAllowance) > 0 && !isExecuting
-                
+
                 return (
                   <Card key={p.id} className="bg-card/50 border-primary/20">
                     <CardHeader className="pb-2">
@@ -515,19 +516,18 @@ export default function AgentPage() {
               <ScrollArea className="h-full">
                 {logs.map((log, i) => {
                   // Check if log contains a transaction hash
-                  const txHashMatch = log.match(/Transaction Hash: (0x[a-fA-F0-9]+)/i) || 
-                                     log.match(/Transaction: (0x[a-fA-F0-9]+)/i) ||
-                                     log.match(/TX: (0x[a-fA-F0-9]+)/i)
+                  const txHashMatch = log.match(/Transaction Hash: (0x[a-fA-F0-9]+)/i) ||
+                    log.match(/Transaction: (0x[a-fA-F0-9]+)/i) ||
+                    log.match(/TX: (0x[a-fA-F0-9]+)/i)
                   const isSuccess = log.includes("SUCCESS") || log.includes("✅")
                   const isTrigger = log.includes("TRIGGER") || log.includes("ACTIVATED")
                   const isError = log.includes("ERROR") || log.includes("❌")
                   const isInfo = log.includes(">") && !isSuccess && !isTrigger && !isError
-                  
+
                   return (
                     <div
                       key={i}
-                      className={`mb-1 break-words ${
-                        isSuccess
+                      className={`mb-1 break-words ${isSuccess
                           ? "text-emerald-400 font-semibold"
                           : isTrigger
                             ? "text-orange-400 font-semibold"
@@ -536,7 +536,7 @@ export default function AgentPage() {
                               : isInfo
                                 ? "text-zinc-300"
                                 : "text-zinc-400"
-                      }`}
+                        }`}
                     >
                       {log}
                       {txHashMatch && (

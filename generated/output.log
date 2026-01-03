@@ -1,0 +1,43 @@
+
+> generated@0.1.0 start
+> ts-node src/Index.res.js
+
+[19:32:20.002] ERROR (323834): Failed to import handler file
+    Contract Name: "GuardianVault"
+    Expected Handler Path: "src/handlers.ts"
+    Code: "EE500"
+    err: {
+      "type": "ReferenceError",
+      "message": "require is not defined in ES module scope, you can use import instead",
+      "stack":
+          ReferenceError: require is not defined in ES module scope, you can use import instead
+              at file:///home/arpit/Desktop/hackathon_projects/guardian-vault-family-wallet/generated/src/Handlers.gen.ts:6:20
+              at ModuleJobSync.runSync (node:internal/modules/esm/module_job:517:37)
+              at ModuleLoader.importSyncForRequire (node:internal/modules/esm/loader:382:47)
+              at loadESMFromCJS (node:internal/modules/cjs/loader:1577:24)
+              at Module._compile (node:internal/modules/cjs/loader:1742:5)
+              at Module.m._compile (/home/arpit/Desktop/hackathon_projects/guardian-vault-family-wallet/generated/node_modules/ts-node/src/index.ts:1618:23)
+              at node:internal/modules/cjs/loader:1892:10
+              at Object.require.extensions.<computed> [as .ts] (/home/arpit/Desktop/hackathon_projects/guardian-vault-family-wallet/generated/node_modules/ts-node/src/index.ts:1621:12)
+              at Module.load (node:internal/modules/cjs/loader:1480:32)
+              at Module._load (node:internal/modules/cjs/loader:1299:12)
+    }
+
+[19:32:20.023] ERROR (323834): Failed at initialization
+    err: {
+      "type": "ReferenceError",
+      "message": "require is not defined in ES module scope, you can use import instead",
+      "stack":
+          ReferenceError: require is not defined in ES module scope, you can use import instead
+              at file:///home/arpit/Desktop/hackathon_projects/guardian-vault-family-wallet/generated/src/Handlers.gen.ts:6:20
+              at ModuleJobSync.runSync (node:internal/modules/esm/module_job:517:37)
+              at ModuleLoader.importSyncForRequire (node:internal/modules/esm/loader:382:47)
+              at loadESMFromCJS (node:internal/modules/cjs/loader:1577:24)
+              at Module._compile (node:internal/modules/cjs/loader:1742:5)
+              at Module.m._compile (/home/arpit/Desktop/hackathon_projects/guardian-vault-family-wallet/generated/node_modules/ts-node/src/index.ts:1618:23)
+              at node:internal/modules/cjs/loader:1892:10
+              at Object.require.extensions.<computed> [as .ts] (/home/arpit/Desktop/hackathon_projects/guardian-vault-family-wallet/generated/node_modules/ts-node/src/index.ts:1621:12)
+              at Module.load (node:internal/modules/cjs/loader:1480:32)
+              at Module._load (node:internal/modules/cjs/loader:1299:12)
+    }
+

@@ -24,24 +24,25 @@ export default function VaultPage() {
   const [executionHistory, setExecutionHistory] = useState<any[]>([])
   const [depositAmount, setDepositAmount] = useState("")
   const [isDepositDialogOpen, setIsDepositDialogOpen] = useState(false)
-  
+
   // Wagmi hooks for contract interaction
   const { data: hash, writeContract, isPending } = useWriteContract()
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash })
   const { data: balance } = useBalance({ address })
 
   // Auto-execution hook for beneficiary distribution
-  const { 
-    autoStatus, 
-    triggerStatus, 
-    isExecuting, 
-    executeDistribution, 
+  const {
+    autoStatus,
+    triggerStatus,
+    isExecuting,
+    executeDistribution,
     executionHistory: autoExecHistory,
-    getExecutionSummary 
+    getExecutionSummary
   } = useAutoExecution(vault)
 
   // Update vault balance when transaction confirms
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     if (isConfirmed && vault && depositAmount) {
       const updatedVaults = JSON.parse(localStorage.getItem("guardian_vaults") || "[]").map((v: any) => {
         if (v.id === id) {
@@ -56,7 +57,7 @@ export default function VaultPage() {
       })
       localStorage.setItem("guardian_vaults", JSON.stringify(updatedVaults))
       setVault(updatedVaults.find((v: any) => v.id === id))
-      
+
       // Reset dialog
       setIsDepositDialogOpen(false)
       setDepositAmount("")
@@ -65,6 +66,7 @@ export default function VaultPage() {
 
   useEffect(() => {
     const loadData = () => {
+      if (typeof window === 'undefined') return;
       const storedVaults = JSON.parse(localStorage.getItem("guardian_vaults") || "[]")
       const foundVault = storedVaults.find((v: any) => v.id === id)
       if (foundVault) {
@@ -75,7 +77,7 @@ export default function VaultPage() {
         setExecutionHistory(storedHistory.filter((h: any) => h.vaultId === id))
       }
     }
-    
+
     loadData()
     // Refresh every 5 seconds for real-time updates
     const interval = setInterval(loadData, 5000)
@@ -84,7 +86,7 @@ export default function VaultPage() {
 
   const handleDeposit = async () => {
     if (!depositAmount || parseFloat(depositAmount) <= 0) return
-    
+
     try {
       // Mock vault contract ABI - in production, use actual deployed vault contract
       const VAULT_ABI = [
@@ -100,7 +102,7 @@ export default function VaultPage() {
       // For demo, we'll simulate the transaction
       // In production, this would be the actual vault contract address
       const mockVaultAddress = vault?.vaultAddress || "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
-      
+
       writeContract({
         address: mockVaultAddress as `0x${string}`,
         abi: VAULT_ABI,
@@ -138,8 +140,8 @@ export default function VaultPage() {
             </p>
           </div>
           <div className="flex gap-3">
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="bg-transparent"
               onClick={() => setIsDepositDialogOpen(true)}
               disabled={!isConnected}
@@ -199,7 +201,7 @@ export default function VaultPage() {
                       <>
                         <Progress value={progress} className="h-2" />
                         <p className="text-[10px] text-muted-foreground text-center italic">
-                          {daysSinceCreation < triggerDays 
+                          {daysSinceCreation < triggerDays
                             ? `${daysSinceCreation} days since creation. ${triggerDays - daysSinceCreation} days until trigger.`
                             : "Trigger condition met. Assets can be released."}
                         </p>
@@ -247,7 +249,7 @@ export default function VaultPage() {
                 </div>
 
                 {triggerStatus.isTriggered && (
-                  <Button 
+                  <Button
                     onClick={executeDistribution}
                     disabled={isExecuting}
                     className="w-full"
@@ -267,11 +269,10 @@ export default function VaultPage() {
                   <div className="pt-2 border-t">
                     <p className="text-xs text-muted-foreground mb-2">Last Execution:</p>
                     <div className="text-xs space-y-1">
-                      <p>Status: <span className={`font-medium ${
-                        autoStatus.lastExecution.overallStatus === 'success' ? 'text-emerald-500' :
-                        autoStatus.lastExecution.overallStatus === 'partial' ? 'text-orange-500' :
-                        'text-red-500'
-                      }`}>{autoStatus.lastExecution.overallStatus.toUpperCase()}</span></p>
+                      <p>Status: <span className={`font-medium ${autoStatus.lastExecution.overallStatus === 'success' ? 'text-emerald-500' :
+                          autoStatus.lastExecution.overallStatus === 'partial' ? 'text-orange-500' :
+                            'text-red-500'
+                        }`}>{autoStatus.lastExecution.overallStatus.toUpperCase()}</span></p>
                       <p>Distributed: {autoStatus.lastExecution.totalDistributed} {vault.assetType}</p>
                       <p>Beneficiaries: {autoStatus.lastExecution.summary.successCount}/{autoStatus.lastExecution.summary.totalBeneficiaries} successful</p>
                     </div>
@@ -326,8 +327,8 @@ export default function VaultPage() {
                           <div className="text-right">
                             <p className="text-xs font-medium">Expires</p>
                             <p className="text-xs text-muted-foreground">{new Date(p.expiry).toLocaleDateString()}</p>
-                            <Badge 
-                              variant="outline" 
+                            <Badge
+                              variant="outline"
                               className="mt-2 text-[9px] h-4 py-0"
                               style={{
                                 backgroundColor: p.status === "active" ? "rgba(16, 185, 129, 0.1)" : "rgba(107, 114, 128, 0.1)",
@@ -456,7 +457,7 @@ export default function VaultPage() {
           </div>
         </div>
       </div>
-      
+
       {/* Deposit Dialog */}
       {isDepositDialogOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -485,7 +486,7 @@ export default function VaultPage() {
                   </p>
                 )}
               </div>
-              
+
               <div className="flex gap-3 pt-4">
                 <Button
                   variant="outline"
@@ -513,7 +514,7 @@ export default function VaultPage() {
                   )}
                 </Button>
               </div>
-              
+
               {hash && (
                 <div className="mt-4 p-3 bg-muted rounded-lg">
                   <p className="text-xs text-muted-foreground mb-1">Transaction submitted:</p>

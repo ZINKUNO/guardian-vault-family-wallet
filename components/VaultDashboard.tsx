@@ -39,9 +39,10 @@ import {
 } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Shield, Clock, AlertTriangle, CheckCircle, Activity, Users, Copy, ExternalLink } from 'lucide-react';
+import { Shield, Clock, AlertTriangle, CheckCircle, Activity, Users, Copy, ExternalLink, Database } from 'lucide-react';
 import { useTriggerSystem } from '@/hooks/useTriggerSystem';
 import { useRevokePermission } from '@/hooks/useRevokePermission';
+import { useEnvioVaults, useEnvioStats } from '@/hooks/useEnvio';
 
 /**
  * Permission Interface
@@ -74,21 +75,36 @@ interface HistoryEvent {
 export function VaultDashboard({ vaultId }: { vaultId: string }) {
     const { address } = useAccount();
     const [activeTab, setActiveTab] = useState("overview");
+    const [useEnvio, setUseEnvio] = useState(true);
 
-    // TODO: Fetch vault data from database/API based on vaultId
-    // In production: const { data: vault, isLoading } = useVault(vaultId);
-    // Mock Vault Data - In real app, fetch this based on vaultId
-    const vault = {
+    // Envio Data
+    const { vaults: envioVaults, loading: envioLoading } = useEnvioVaults(address);
+    const { stats: globalStats } = useEnvioStats();
+
+    // Mock Vault Data - Fallback
+    const mockVault = {
         name: "Family Inheritance Vault",
         address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
         balance: "10.5",
         owner: address,
         createdAt: Date.now() - 10000000,
-        triggerType: 'time',
-        triggerTimestamp: Date.now() + 86400000 * 89 // 89 days left
+        triggerType: 'time' as const,
+        triggerTimestamp: Date.now() + 86400000 * 89
     };
 
-    // Mock Permissions
+    // Determine which data to use
+    const indexedVault = envioVaults?.find(v => v.id.toLowerCase() === vaultId.toLowerCase() || v.id.toLowerCase() === mockVault.address.toLowerCase());
+
+    // Merge Envio data with mock for UI display
+    const vault = (useEnvio && indexedVault) ? {
+        ...mockVault,
+        address: indexedVault.id,
+        balance: (Number(indexedVault.balance) / 1e18).toFixed(4),
+        isTriggered: indexedVault.isTriggered,
+        lastActivity: Number(indexedVault.lastActivity) * 1000
+    } : mockVault;
+
+    // Mock Permissions & Beneficiaries (In real app, these would also come from Envio)
     const [permissions, setPermissions] = useState<Permission[]>([
         {
             id: "p1",
@@ -99,24 +115,17 @@ export function VaultDashboard({ vaultId }: { vaultId: string }) {
             remainingAllowance: "5.0",
             expiresAt: Date.now() + 86400000 * 90,
             status: "active"
-        },
-        {
-            id: "p2",
-            agentAddress: "0x456...def",
-            agentType: "Verifier",
-            tokenType: "ETH",
-            maxAmount: "2.5",
-            remainingAllowance: "2.5",
-            expiresAt: Date.now() + 86400000 * 90,
-            status: "active"
         }
     ]);
 
-    // Mock Beneficiaries
-    const beneficiaries: Beneficiary[] = [
-        { address: "0xBen1...111", allocation: 60, received: "0" },
-        { address: "0xBen2...222", allocation: 40, received: "0" }
-    ];
+    const beneficiaries: Beneficiary[] = indexedVault?.beneficiaries?.map((b: any) => ({
+        address: b.address,
+        allocation: b.percentage,
+        received: (Number(b.receivedAmount) / 1e18).toString()
+    })) || [
+            { address: "0xBen1...111", allocation: 60, received: "0" },
+            { address: "0xBen2...222", allocation: 40, received: "0" }
+        ];
 
     // Mock History
     const history: HistoryEvent[] = [
@@ -142,7 +151,14 @@ export function VaultDashboard({ vaultId }: { vaultId: string }) {
         <div className="container mx-auto p-6 space-y-8">
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">{vault.name}</h1>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-3xl font-bold tracking-tight">{vault.name}</h1>
+                        {indexedVault && (
+                            <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20 flex gap-1 items-center">
+                                <Database className="h-3 w-3" /> Indexed by Envio
+                            </Badge>
+                        )}
+                    </div>
                     <div className="flex items-center gap-2 text-muted-foreground mt-1">
                         <span className="font-mono text-sm">{vault.address}</span>
                         <Button variant="ghost" size="icon" className="h-4 w-4" onClick={() => copyToClipboard(vault.address)}>
@@ -150,29 +166,40 @@ export function VaultDashboard({ vaultId }: { vaultId: string }) {
                         </Button>
                     </div>
                 </div>
-                <div className="flex gap-2">
-                    <Badge variant={triggerStatus.isTriggered ? "destructive" : "secondary"} className="text-lg px-4 py-1">
-                        {triggerStatus.isTriggered ? "🔥 Triggered" : "🛡️ Secure"}
-                    </Badge>
+                <div className="flex gap-4 items-center">
+                    {globalStats && (
+                        <div className="text-right hidden md:block border-r pr-4 border-border">
+                            <p className="text-[10px] uppercase text-muted-foreground font-bold">Network TVL</p>
+                            <p className="text-sm font-mono">{(Number(globalStats.totalValueLocked) / 1e18).toFixed(2)} ETH</p>
+                        </div>
+                    )}
+                    <div className="flex flex-col items-end gap-1">
+                        <Badge variant={triggerStatus.isTriggered ? "destructive" : "secondary"} className="text-lg px-4 py-1">
+                            {triggerStatus.isTriggered ? "🔥 Triggered" : "🛡️ Secure"}
+                        </Badge>
+                        {indexedVault && (
+                            <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                <Activity className="h-2 w-2" /> Live Syncing
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Balance Card */}
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Balance</CardTitle>
-                        <Shield className="h-4 w-4 text-muted-foreground" />
+                <Card className="bg-card/50 backdrop-blur border-primary/10">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">Total Balance</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{vault.balance} ETH</div>
-                        <p className="text-xs text-muted-foreground">
-                            +0% from last month
-                        </p>
+                        <div className="text-3xl font-bold">{vault.balance} ETH</div>
+                        {indexedVault && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Total Deposited: {(Number(indexedVault.totalDeposited) / 1e18).toFixed(2)} ETH
+                            </p>
+                        )}
                     </CardContent>
                 </Card>
-
-                {/* Trigger Status Card */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Trigger Status</CardTitle>
